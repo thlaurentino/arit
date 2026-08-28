@@ -1,0 +1,1 @@
+["^ ","~$print-users",["^ ","~:row",4,"~:col",1,"~:fixed-arities",["~#set",[1]],"~:name","^0","~:ns","~$examples.smells.production-doall","~:top-ns","^7","~:type","~:fn"],"~:filename","/home/thiago/mestrado/zenodo-cbsoft/clj-smells-arit/examples/smells/production_doall.clj"]
