@@ -2,14 +2,13 @@ package analyzer
 
 import (
 	"fmt"
-	"reflect"
+
 	"strings"
 	"sync"
 
 	"github.com/thlaurentino/arit/internal/config"
 	"github.com/thlaurentino/arit/internal/reader"
 	"github.com/thlaurentino/arit/internal/rules"
-	"github.com/thlaurentino/arit/internal/rules/functional"
 )
 
 type AnalysisResult struct {
@@ -54,8 +53,6 @@ type SymbolInfo struct {
 	IsPrivate       bool
 	IsUsed          bool
 	OriginNamespace string
-	TypeHint        string
-	InferredType    string
 }
 
 type NamespaceAlias struct {
@@ -225,23 +222,15 @@ func CollectDefinitions(nodes []*reader.RichNode, globalScope *Scope) {
 		if node.Type == reader.NodeList && len(node.Children) > 0 && node.Children[0] != nil && node.Children[0].Type == reader.NodeSymbol {
 			funcNameNode := node.Children[0]
 			switch funcNameNode.Value {
-			case "defn", "defn-", "defmacro", "defmethod", "defmulti":
+			case "defn", "defn-":
 				if len(node.Children) > 1 && node.Children[1] != nil && node.Children[1].Type == reader.NodeSymbol {
 					funcSymbolNode := node.Children[1]
-					var typeHint string
-					if funcSymbolNode.TypeHint != "" {
-						typeHint = funcSymbolNode.TypeHint
-					} else if node.TypeHint != "" {
-						typeHint = node.TypeHint
-					}
 					funcInfo := &SymbolInfo{
-						Name:         funcSymbolNode.Value,
-						Definition:   node,
-						Type:         TypeFunction,
-						IsPrivate:    funcNameNode.Value == "defn-",
-						IsUsed:       false,
-						TypeHint:     typeHint,
-						InferredType: "Function",
+						Name:       funcSymbolNode.Value,
+						Definition: node,
+						Type:       TypeFunction,
+						IsPrivate:  funcNameNode.Value == "defn-",
+						IsUsed:     false,
 					}
 					currentScope.Define(funcInfo)
 
@@ -304,31 +293,18 @@ func CollectDefinitions(nodes []*reader.RichNode, globalScope *Scope) {
 						}
 						bindingVarNode := bindingsNode.Children[i]
 						if bindingVarNode != nil {
-							bindingValNode := bindingsNode.Children[i+1]
-							defineBindingFormWithValue(bindingVarNode, bindingValNode, letScope, localDefs, TypeVariable)
+							defineBindingForm(bindingVarNode, letScope, localDefs, TypeVariable)
 						}
 					}
 				}
 			case "def", "defonce":
 				if len(node.Children) > 1 && node.Children[1] != nil && node.Children[1].Type == reader.NodeSymbol {
 					varSymbolNode := node.Children[1]
-					var typeHint string
-					if varSymbolNode.TypeHint != "" {
-						typeHint = varSymbolNode.TypeHint
-					} else if node.TypeHint != "" {
-						typeHint = node.TypeHint
-					}
-					var inferredType string
-					if len(node.Children) > 2 && node.Children[2] != nil {
-						inferredType = node.Children[2].InferredType
-					}
 					varInfo := &SymbolInfo{
-						Name:         varSymbolNode.Value,
-						Definition:   node,
-						Type:         TypeVariable,
-						IsUsed:       false,
-						TypeHint:     typeHint,
-						InferredType: inferredType,
+						Name:       varSymbolNode.Value,
+						Definition: node,
+						Type:       TypeVariable,
+						IsUsed:     false,
 					}
 					currentScope.Define(varInfo)
 				}
@@ -386,7 +362,7 @@ func ResolveSymbols(nodes []*reader.RichNode, globalScope *Scope) {
 		if node.Type == reader.NodeList && len(node.Children) > 0 && node.Children[0].Type == reader.NodeSymbol {
 			funcNameNodeVal := node.Children[0].Value
 			switch funcNameNodeVal {
-			case "defn", "defn-", "defmacro", "defmethod", "defmulti":
+			case "defn", "defn-":
 				if len(node.Children) > 1 && node.Children[1].Type == reader.NodeSymbol {
 
 					newFnScope := NewScope(currentScope)
@@ -441,8 +417,7 @@ func ResolveSymbols(nodes []*reader.RichNode, globalScope *Scope) {
 					for i := 0; i < len(bindingsNode.Children); i += 2 {
 						if i+1 < len(bindingsNode.Children) {
 							bindingVarNode := bindingsNode.Children[i]
-							bindingValNode := bindingsNode.Children[i+1]
-							defineBindingFormWithValue(bindingVarNode, bindingValNode, newLetScope, nil, TypeVariable)
+							defineBindingForm(bindingVarNode, newLetScope, nil, TypeVariable)
 						}
 					}
 					nextScope = newLetScope
@@ -457,9 +432,6 @@ func ResolveSymbols(nodes []*reader.RichNode, globalScope *Scope) {
 				node.ResolvedDefinition = info.Definition
 				node.SymbolRef = info
 				info.IsUsed = true
-				if info.TypeHint != "" {
-					node.TypeHint = info.TypeHint
-				}
 
 			} else if aliasInfo, aliasFound := currentScope.findAlias(symbolName); aliasFound {
 				node.SymbolRef = aliasInfo
@@ -498,16 +470,20 @@ func ResolveSymbols(nodes []*reader.RichNode, globalScope *Scope) {
 }
 
 type Analyzer struct {
-	Rules  []rules.CheckerRule
-	Config *config.Config
+	Rules []rules.CheckerRule
 }
 
 func NewAnalyzer(cfg *config.Config) *Analyzer {
-	analyzer := &Analyzer{
-		Config: cfg,
-	}
+	analyzer := &Analyzer{}
 
 	allRuleInstances := rules.AllRules()
+
+	for _, ruleInst := range allRuleInstances {
+
+		if _ = ruleInst.(rules.CheckerRule); true {
+
+		}
+	}
 
 	for _, ruleInstance := range allRuleInstances {
 		checkerRule, ok := ruleInstance.(rules.CheckerRule)
@@ -517,44 +493,22 @@ func NewAnalyzer(cfg *config.Config) *Analyzer {
 		}
 
 		ruleMetaID := checkerRule.Meta().ID
-		ruleGroup := rules.GetRuleGroup(ruleMetaID)
 
-		groupEnabled, groupSpecified := cfg.EnabledGroups[ruleGroup]
-		ruleEnabled, ruleSpecified := cfg.EnabledRules[ruleMetaID]
-
-		var shouldProcessRule bool
-		if groupSpecified {
-			shouldProcessRule = groupEnabled
-		} else if ruleSpecified {
-			shouldProcessRule = ruleEnabled
-		} else {
-			// By default, if nothing is specified in config, only clojure-specific is enabled
-			shouldProcessRule = (ruleGroup == "clojure-specific")
-		}
+		isEnabledInGlobalConfig, specifiedInGlobalConfig := cfg.EnabledRules[ruleMetaID]
+		shouldProcessRule := !specifiedInGlobalConfig || isEnabledInGlobalConfig
 
 		if !shouldProcessRule {
+
 			continue
 		}
 
-		clonedRule := cloneRule(checkerRule)
-		configuredRule := configureRule(clonedRule, cfg)
+		configuredRule := configureRule(checkerRule, cfg)
 
 		analyzer.Rules = append(analyzer.Rules, configuredRule)
+
 	}
 
 	return analyzer
-}
-
-func cloneRule(rule rules.CheckerRule) rules.CheckerRule {
-	val := reflect.ValueOf(rule)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	newVal := reflect.New(val.Type())
-	newVal.Elem().Set(val)
-
-	return newVal.Interface().(rules.CheckerRule)
 }
 
 func configureRule(rule rules.CheckerRule, cfg *config.Config) rules.CheckerRule {
@@ -565,16 +519,16 @@ func configureRule(rule rules.CheckerRule, cfg *config.Config) rules.CheckerRule
 		return rule
 	}
 
-	if typedRule, ok := rule.(*functional.LazySideEffectsRule); ok {
-		newRule := &functional.LazySideEffectsRule{
+	if typedRule, ok := rule.(*rules.LazySideEffectsRule); ok {
+		newRule := &rules.LazySideEffectsRule{
 			LazyContextFuncs: make(map[string]bool),
 			SideEffectFuncs:  make(map[string]bool),
 		}
 
-		for k, v := range functional.DefaultLazyContextFunctions {
+		for k, v := range rules.DefaultLazyContextFunctions {
 			newRule.LazyContextFuncs[k] = v
 		}
-		for k, v := range functional.DefaultSideEffectFunctions {
+		for k, v := range rules.DefaultSideEffectFunctions {
 			newRule.SideEffectFuncs[k] = v
 		}
 
@@ -607,7 +561,7 @@ func isNodeEagerConsumer(node *reader.RichNode) bool {
 	if funcNode.Type != reader.NodeSymbol {
 		return false
 	}
-	_, isEager := functional.EagerConsumerFunctions[funcNode.Value]
+	_, isEager := rules.EagerConsumerFunctions[funcNode.Value]
 	return isEager
 }
 
@@ -622,44 +576,30 @@ func (a *Analyzer) Analyze(filepath string, richRootNodes []*reader.RichNode, co
 			return
 		}
 
-		prevScope := currentContext["scope"]
-		prevConfig := currentContext["config"]
-		currentContext["scope"] = scope
-		currentContext["config"] = a.Config
-
 		for _, rule := range a.Rules {
-			if finding := rule.Check(node, currentContext, filepath); finding != nil {
-				// Inject fingerprint centrally: covers both DSL rules (via builder)
-				// and hand-written detectors that instantiate Finding directly.
-				if finding.ASTFingerprint == "" {
-					finding.ASTFingerprint = rules.ComputeFingerprint(node)
-				}
+			ruleContext := make(map[string]interface{})
+			for k, v := range currentContext {
+				ruleContext[k] = v
+			}
+			ruleContext["scope"] = scope
+
+			if finding := rule.Check(node, ruleContext, filepath); finding != nil {
 				findingsMutex.Lock()
 				allFindings = append(allFindings, finding)
 				findingsMutex.Unlock()
 			}
 		}
 
-		prevParent := currentContext["parent"]
-		currentContext["parent"] = node
+		nextScope := scope
 
-		prevIsInEager, _ := currentContext["isInEagerContext"].(bool)
-		nodeIsEager := isNodeEagerConsumer(node)
-		eagerChanged := false
-		if nodeIsEager && !prevIsInEager {
-			currentContext["isInEagerContext"] = true
-			eagerChanged = true
+		childContext := make(map[string]interface{})
+		for k, v := range currentContext {
+			childContext[k] = v
 		}
+		childContext["parent"] = node
 
-		var prevEnclosing interface{}
-		enclosingChanged := false
-		if node.Type == reader.NodeList && len(node.Children) > 0 && node.Children[0].Type == reader.NodeSymbol {
-			if enclosing, ok := currentContext["enclosingForms"].([]string); ok {
-				prevEnclosing = enclosing
-				currentContext["enclosingForms"] = append(enclosing, node.Children[0].Value)
-				enclosingChanged = true
-			}
-		}
+		isParentEager, _ := currentContext["isInEagerContext"].(bool)
+		childContext["isInEagerContext"] = isParentEager || isNodeEagerConsumer(node)
 
 		parentIsInsideFunc, _ := currentContext["isInsideFunction"].(bool)
 		parentIsInsideLet, _ := currentContext["isInsideLet"].(bool)
@@ -678,7 +618,7 @@ func (a *Analyzer) Analyze(filepath string, richRootNodes []*reader.RichNode, co
 		if node.Type == reader.NodeList && len(node.Children) > 0 && node.Children[0].Type == reader.NodeSymbol {
 			nodeVal := node.Children[0].Value
 			switch nodeVal {
-			case "defn", "defn-", "defmacro", "defmethod", "defmulti", "fn":
+			case "defn", "defn-", "fn":
 				currentNodeDefinesFunc = true
 			case "let":
 				currentNodeDefinesLet = true
@@ -694,12 +634,17 @@ func (a *Analyzer) Analyze(filepath string, richRootNodes []*reader.RichNode, co
 		}
 
 		for idx, child := range node.Children {
-			currentChildScope := scope
+			currentChildScope := nextScope
 
 			if node.Type == reader.NodeList && len(node.Children) > 0 && (node.Children[0].Value == "let" || node.Children[0].Value == "loop") {
 				if idx == 1 && child.Type == reader.NodeVector {
 					currentChildScope = scope
 				}
+			}
+
+			traversalContext := make(map[string]interface{})
+			for k, v := range childContext {
+				traversalContext[k] = v
 			}
 
 			childIsInsideFunc := parentIsInsideFunc
@@ -733,82 +678,72 @@ func (a *Analyzer) Analyze(filepath string, richRootNodes []*reader.RichNode, co
 					childIsInsideFunc = true
 				}
 			}
+			traversalContext["isInsideFunction"] = childIsInsideFunc
 
-			childIsInsideLet := parentIsInsideLet || (currentNodeDefinesLet && idx > 0)
-			childIsInsideLoop := parentIsInsideLoop || (currentNodeDefinesLoop && idx > 0)
-			childIsInsideBinding := parentIsInsideBinding || (currentNodeDefinesBinding && idx > 0)
-			childIsInsideDosync := parentIsInsideDosync || (currentNodeDefinesDosync && idx > 0)
-			childIsInsideWithOpen := parentIsInsideWithOpen || (currentNodeDefinesWithOpen && idx > 0)
+			childIsInsideLet := parentIsInsideLet
+			if currentNodeDefinesLet && idx > 0 {
+				childIsInsideLet = true
+			}
+			traversalContext["isInsideLet"] = childIsInsideLet
 
-			prevChildFunc := currentContext["isInsideFunction"]
-			currentContext["isInsideFunction"] = childIsInsideFunc
+			childIsInsideLoop := parentIsInsideLoop
+			if currentNodeDefinesLoop && idx > 0 {
+				childIsInsideLoop = true
+			}
+			traversalContext["isInsideLoop"] = childIsInsideLoop
 
-			prevChildLet := currentContext["isInsideLet"]
-			currentContext["isInsideLet"] = childIsInsideLet
+			childIsInsideBinding := parentIsInsideBinding
+			if currentNodeDefinesBinding && idx > 0 {
+				childIsInsideBinding = true
+			}
+			traversalContext["isInsideBinding"] = childIsInsideBinding
 
-			prevChildLoop := currentContext["isInsideLoop"]
-			currentContext["isInsideLoop"] = childIsInsideLoop
+			childIsInsideDosync := parentIsInsideDosync
+			if currentNodeDefinesDosync && idx > 0 {
+				childIsInsideDosync = true
+			}
+			traversalContext["isInsideDosync"] = childIsInsideDosync
 
-			prevChildBinding := currentContext["isInsideBinding"]
-			currentContext["isInsideBinding"] = childIsInsideBinding
+			childIsInsideWithOpen := parentIsInsideWithOpen
+			if currentNodeDefinesWithOpen && idx > 0 {
+				childIsInsideWithOpen = true
+			}
+			traversalContext["isInsideWithOpen"] = childIsInsideWithOpen
 
-			prevChildDosync := currentContext["isInsideDosync"]
-			currentContext["isInsideDosync"] = childIsInsideDosync
-
-			prevChildWithOpen := currentContext["isInsideWithOpen"]
-			currentContext["isInsideWithOpen"] = childIsInsideWithOpen
-
-			traverseAndAnalyze(child, currentContext, currentChildScope)
-
-			currentContext["isInsideFunction"] = prevChildFunc
-			currentContext["isInsideLet"] = prevChildLet
-			currentContext["isInsideLoop"] = prevChildLoop
-			currentContext["isInsideBinding"] = prevChildBinding
-			currentContext["isInsideDosync"] = prevChildDosync
-			currentContext["isInsideWithOpen"] = prevChildWithOpen
+			traverseAndAnalyze(child, traversalContext, currentChildScope)
 		}
 
-		currentContext["parent"] = prevParent
-		if eagerChanged {
-			currentContext["isInEagerContext"] = prevIsInEager
-		}
-		if enclosingChanged {
-			currentContext["enclosingForms"] = prevEnclosing
-		}
-		currentContext["scope"] = prevScope
-		currentContext["config"] = prevConfig
 	}
 
 	initialContext := map[string]interface{}{
-		"isInEagerContext": false,
-		"isInsideFunction": false,
-		"isInsideLet":      false,
-		"isInsideLoop":     false,
-		"isInsideBinding":  false,
-		"isInsideDosync":   false,
-		"isInsideWithOpen": false,
-		"enclosingForms":   make([]string, 0, 32),
+		"isInEagerContext":  false,
+		"isInsideFunction":  false,
+		"isInsideLet":       false,
+		"isInsideLoop":      false,
+		"isInsideBinding":   false,
+		"isInsideDosync":    false,
+		"isInsideWithOpen":  false,
 	}
 
 	for _, rootNode := range richRootNodes {
 		traverseAndAnalyze(rootNode, initialContext, globalScope)
 	}
 
-	initialContext["scope"] = globalScope
-	initialContext["config"] = a.Config
-
 	for _, commentNode := range comments {
 		for _, rule := range a.Rules {
-			if finding := rule.Check(commentNode, initialContext, filepath); finding != nil {
+			ruleContext := make(map[string]interface{})
+			for k, v := range initialContext {
+				ruleContext[k] = v
+			}
+			ruleContext["scope"] = globalScope
+
+			if finding := rule.Check(commentNode, ruleContext, filepath); finding != nil {
 				findingsMutex.Lock()
 				allFindings = append(allFindings, finding)
 				findingsMutex.Unlock()
 			}
 		}
 	}
-
-	delete(initialContext, "scope")
-	delete(initialContext, "config")
 
 	return allFindings
 }
@@ -818,42 +753,6 @@ func defineParams(paramsNode *reader.RichNode, targetScope *Scope, localDefs map
 		return
 	}
 	defineBindingForm(paramsNode, targetScope, localDefs, TypeParameter)
-}
-
-func defineBindingFormWithValue(bindingNode *reader.RichNode, valNode *reader.RichNode, targetScope *Scope, localDefs map[*reader.RichNode]*SymbolInfo, defaultSymbolType SymbolType) {
-	if bindingNode == nil {
-		return
-	}
-	if bindingNode.Type == reader.NodeSymbol {
-		symbolName := bindingNode.Value
-		if symbolName == "_" || symbolName == "&" || strings.HasPrefix(symbolName, ".") || strings.Contains(symbolName, "/") {
-			return
-		}
-		info := &SymbolInfo{
-			Name:       symbolName,
-			Definition: bindingNode,
-			Type:       defaultSymbolType,
-			IsUsed:     false,
-		}
-		if bindingNode.TypeHint != "" {
-			info.TypeHint = bindingNode.TypeHint
-		}
-		if valNode != nil {
-			if info.TypeHint == "" && valNode.TypeHint != "" {
-				info.TypeHint = valNode.TypeHint
-			}
-			info.InferredType = valNode.InferredType
-		} else {
-			info.InferredType = bindingNode.InferredType
-		}
-		if targetScope.Define(info) {
-			if localDefs != nil {
-				localDefs[bindingNode] = info
-			}
-		}
-		return
-	}
-	defineBindingForm(bindingNode, targetScope, localDefs, defaultSymbolType)
 }
 
 func defineBindingForm(bindingNode *reader.RichNode, targetScope *Scope, localDefs map[*reader.RichNode]*SymbolInfo, defaultSymbolType SymbolType) {
@@ -868,12 +767,10 @@ func defineBindingForm(bindingNode *reader.RichNode, targetScope *Scope, localDe
 			return
 		}
 		info := &SymbolInfo{
-			Name:         symbolName,
-			Definition:   bindingNode,
-			Type:         defaultSymbolType,
-			IsUsed:       false,
-			TypeHint:     bindingNode.TypeHint,
-			InferredType: bindingNode.InferredType,
+			Name:       symbolName,
+			Definition: bindingNode,
+			Type:       defaultSymbolType,
+			IsUsed:     false,
 		}
 		if targetScope.Define(info) {
 			if localDefs != nil {
@@ -930,7 +827,7 @@ func shouldSkipChildInPass1(parentNode, childNode *reader.RichNode, childIndex i
 	if parentNode.Type == reader.NodeList && len(parentNode.Children) > 0 && parentNode.Children[0].Type == reader.NodeSymbol {
 		funcName := parentNode.Children[0].Value
 		switch funcName {
-		case "defn", "defn-", "defmacro", "defmethod", "defmulti":
+		case "defn", "defn-":
 
 			if childIndex == 1 {
 				return true
@@ -1085,30 +982,7 @@ func parseNamespaceForm(nsNode *reader.RichNode) (string, []NamespaceAlias, []Re
 	return namespaceName, aliases, referredSymbols, nil
 }
 
-var (
-	analyzersMu sync.RWMutex
-	analyzers   = make(map[*config.Config]*Analyzer)
-)
-
-func getOrCreateAnalyzer(cfg *config.Config) *Analyzer {
-	analyzersMu.RLock()
-	if a, exists := analyzers[cfg]; exists {
-		analyzersMu.RUnlock()
-		return a
-	}
-	analyzersMu.RUnlock()
-
-	analyzersMu.Lock()
-	defer analyzersMu.Unlock()
-	if a, exists := analyzers[cfg]; exists {
-		return a
-	}
-	a := NewAnalyzer(cfg)
-	analyzers[cfg] = a
-	return a
-}
-
-func (a *Analyzer) AnalyzeFile(filepath string) (AnalysisResult, error) {
+func AnalyzeFile(filepath string, cfg *config.Config) (AnalysisResult, error) {
 	tree, err := reader.ParseFile(filepath)
 	if err != nil {
 		return AnalysisResult{}, fmt.Errorf("parsing file failed: %w", err)
@@ -1163,7 +1037,11 @@ func (a *Analyzer) AnalyzeFile(filepath string) (AnalysisResult, error) {
 
 	ResolveSymbols(richRoots, globalScope)
 
-	findingsFromAnalysis := a.Analyze(filepath, richRoots, comments, globalScope)
+	if cfg == nil {
+		return AnalysisResult{}, fmt.Errorf("configuration cannot be nil")
+	}
+	analyzerInstance := NewAnalyzer(cfg)
+	findingsFromAnalysis := analyzerInstance.Analyze(filepath, richRoots, comments, globalScope)
 
 	concreteFindings := make([]rules.Finding, 0, len(findingsFromAnalysis))
 	for _, fptr := range findingsFromAnalysis {
@@ -1180,12 +1058,4 @@ func (a *Analyzer) AnalyzeFile(filepath string) (AnalysisResult, error) {
 		Aliases:         aliases,
 		ReferredSymbols: referredSymbols,
 	}, nil
-}
-
-func AnalyzeFile(filepath string, cfg *config.Config) (AnalysisResult, error) {
-	if cfg == nil {
-		return AnalysisResult{}, fmt.Errorf("configuration cannot be nil")
-	}
-	analyzerInstance := getOrCreateAnalyzer(cfg)
-	return analyzerInstance.AnalyzeFile(filepath)
 }

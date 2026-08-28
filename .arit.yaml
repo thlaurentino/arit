@@ -1,0 +1,221 @@
+# Arit configuration file.
+#
+# You can enable or disable rules by setting them to true or false in the 'enabled_rules' section.
+# Specific parameters for rules can be configured in the 'rule_config' section.
+#
+enabled-rules:
+  accessing-nonexistent-map-fields: false
+  blocking-inside-go: true
+  comments: false
+  conditional-build-up: true
+  cyclic-dependency: false
+  data-clumps: false
+  deeply-nested: false
+  direct-use-of-clojure-lang-rt: true
+  divergent-change: false
+  duplicated-code: false
+  excessive-refers: true
+  explicit-recursion: false
+  external-data-coupling: false
+  external-data-coupling:direct-external-schema-usage: false
+  feature-envy: false
+  hidden-side-effects: false
+  immutability-violation: true
+  implicit-namespace-dependencies: true
+  improper-emptiness-check: true
+  inappropriate-collection: false
+  inefficient-filtering: false
+  inefficient-generator: false
+  lazy-side-effects: false
+  library-locker: false
+  linear-collection-scan: false
+  long-function: false
+  long-parameter-list: false
+  message-chains: false
+  middle-man: false
+  misuse-of-channel-closing-semantics: true
+  monolithic-namespace-split: true
+  multiple-evaluation-in-macros: true
+  namespace-load-side-effects: true
+  namespaced-keys-neglect: false
+  nested-forms: true
+  overabstracted-composition: false
+  overuse-of-high-order-functions: false
+  positional-return-values: false
+  premature-optimization: false
+  primitive-obsession: false
+  private-multimethods: true
+  production-doall: true
+  redundant-do-block: true
+  shotgun-surgery: false
+  single-segment-namespace: true
+  string-map-keys: false
+  thread-ignorance: true
+  trivial-lambda: false
+  'underutilizing-features: use-mapcat': false
+  unmanaged-resource_io: true
+  unnecessary-abstraction: false
+  unnecessary-into: true
+  verbose-checks: true
+rule-config:
+  accessing-nonexistent-map-fields:
+    check_direct_keyword_access: true
+    check_nested_access: true
+    check_threading_macros: true
+    min_nesting_level: 2
+  blocking-inside-go: {}
+  comments:
+    max_comment_length: 120
+    min_comment_length: 5
+    report_commented_code: true
+    report_deodorant: true
+    report_docstring: false
+    report_empty: true
+    report_fixme: true
+    report_obvious: true
+    report_redundant: true
+    report_todo: true
+  conditional-build-up: {}
+  cyclic-dependency: {}
+  data-clumps:
+    min_clump_size: 3
+    min_occurrences: 2
+    similarity_threshold: 0.7
+  deeply-nested:
+    max_depth: 15
+  direct-use-of-clojure-lang-rt:
+    allowed_functions: []
+  divergent-change: {}
+  duplicated-code: {}
+  excessive-refers: {}
+  explicit-recursion: {}
+  external-data-coupling: {}
+  external-data-coupling:direct-external-schema-usage: {}
+  feature-envy:
+    envy_threshold: 0.7
+    ignore_namespaces:
+    - clojure.core
+    - cljs.core
+    - clojure.string
+    - clojure.set
+    - clojure.walk
+    - clojure.zip
+    - clojure.data
+    - clojure.edn
+    - clojure.java.io
+    - clojure.pprint
+    - clojure.repl
+    min_external_calls: 3
+    min_total_calls: 5
+  hidden-side-effects: {}
+  immutability-violation: {}
+  implicit-namespace-dependencies: {}
+  improper-emptiness-check: {}
+  inappropriate-collection: {}
+  inefficient-filtering: {}
+  inefficient-generator: {}
+  lazy-side-effects:
+    lazy_context_funcs:
+      cycle: true
+      distinct: true
+      filter: true
+      for: true
+      interpose: true
+      iterate: true
+      keep: true
+      lazy-cat: true
+      lazy-seq: true
+      map: true
+      mapcat: true
+      remove: true
+      repeat: true
+      repeatedly: true
+    side_effect_funcs:
+      add-watch: true
+      alter-var-root: true
+      aset: true
+      pr: true
+      print: true
+      printf: true
+      println: true
+      prn: true
+      remove-watch: true
+      reset!: true
+      send: true
+      send-off: true
+      spit: true
+      swap!: true
+  library-locker:
+    excluded_libraries:
+    - clojure.core
+    - clojure.string
+    - clojure.set
+    - clojure.walk
+    min_param_count: 1
+  linear-collection-scan: {}
+  long-function:
+    max_lines: 57
+  long-parameter-list:
+    max_parameters: 9
+  message-chains:
+    max_length: 7
+  middle-man: {}
+  misuse-of-channel-closing-semantics: {}
+  monolithic-namespace-split: {}
+  multiple-evaluation-in-macros: {}
+  namespace-load-side-effects: {}
+  namespaced-keys-neglect: {}
+  nested-forms:
+    max_conditional_depth: 3
+    max_consecutive_same_forms: 2
+    tracked_forms:
+    - let
+    - when
+    - if
+    - when-let
+    - if-let
+    - when-some
+    - if-some
+    - when-not
+    - if-not
+    - loop
+    - binding
+    - with-open
+    - with-local-vars
+    - doseq
+    - dotimes
+    - for
+    - try
+    - catch
+    - cond
+    - case
+  overabstracted-composition: {}
+  overuse-of-high-order-functions: {}
+  positional-return-values: {}
+  premature-optimization: {}
+  primitive-obsession: {}
+  private-multimethods: {}
+  production-doall:
+    allow_in_dev_code: false
+    allow_in_repl: true
+    allow_in_tests: false
+  redundant-do-block: {}
+  shotgun-surgery: {}
+  single-segment-namespace: {}
+  string-map-keys: {}
+  thread-ignorance:
+    max_arguments: 8
+    min_nesting_depth: 2
+  trivial-lambda: {}
+  'underutilizing-features: use-mapcat': {}
+  unmanaged-resource_io: {}
+  unnecessary-abstraction: {}
+  unnecessary-into:
+    check_map_mapping: true
+    check_transducer_api: true
+    check_type_transformations: true
+  verbose-checks:
+    check_boolean_comparisons: true
+    check_math_operations: true
+    check_nil_comparisons: true
+    check_numeric_comparisons: true
